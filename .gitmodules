@@ -1,0 +1,3 @@
+[submodule "lib/avdecc"]
+	path = lib/avdecc
+	url = ../jdksavdecc-c
