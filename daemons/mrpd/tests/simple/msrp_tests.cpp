@@ -104,7 +104,7 @@ TEST_GROUP(MsrpTestGroup)
     void setup()
     {
         mrpd_reset();
-        msrp_init(1);
+        msrp_init(1,0);
     }
 
     void teardown()
