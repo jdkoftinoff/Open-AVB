@@ -31,17 +31,20 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "avdeccd.h"
 
 struct entity_state {
+	uv_loop_t *loop;
+	uv_timer_t second_timer;
 	struct adp_adv advertiser;
 	struct jdksavdecc_eui64 entity_id;
 	struct jdksavdecc_eui64 entity_model_id;
-
-	int socket_fd;
 } the_entity;
 
 void frame_send(struct adp_adv *self, void *context, uint8_t const *buf,
 		uint16_t len);
 
-void entity_state_init(struct entity_state *entity);
+void entity_state_init(struct entity_state *entity, uv_loop_t *loop);
+void entity_state_start(struct entity_state *entity);
+void entity_state_timer(uv_timer_t *handle);
+void entity_state_stop(struct entity_state *entity);
 
 /**
  * @brief found_interface
@@ -355,7 +358,7 @@ void frame_send(struct adp_adv *self, void *context, uint8_t const *buf,
 	}
 }
 
-void entity_state_init(struct entity_state *entity)
+void entity_state_init(struct entity_state *entity, uv_loop_t *loop)
 {
 	adp_adv_init(&entity->advertiser, entity, frame_send, 0);
 
@@ -364,7 +367,27 @@ void entity_state_init(struct entity_state *entity)
 	jdksavdecc_eui64_init_from_uint64(&entity->entity_model_id,
 					  0x70B3d5edc0000003UL);
 
+	entity->loop = loop;
+
+	uv_timer_init(loop, &entity->second_timer);
+	entity->second_timer.data = entity;
 	/* TODO: initialize entity_state */
+}
+
+void entity_state_timer(uv_timer_t *handle)
+{
+	struct entity_state *entity = (struct entity_state *)handle->data;
+	adp_adv_tick(&entity->advertiser, uv_hrtime() / 1000);
+}
+
+void entity_state_start(struct entity_state *entity)
+{
+	uv_timer_start(&entity->second_timer, entity_state_timer, 0, 1000);
+}
+
+void entity_state_stop(struct entity_state *entity)
+{
+	uv_timer_stop(&entity->second_timer);
 }
 
 int main(int argc, char **argv)
@@ -374,23 +397,24 @@ int main(int argc, char **argv)
 	uv_signal_t sigterm_handle;
 	uv_rawpkt_network_port_iterator_t rawpkt_iter;
 
-	entity_state_init(&the_entity);
-
-	uv_rawpkt_network_port_iterator_init(loop, &rawpkt_iter);
-
-	uv_rawpkt_network_port_iterator_start(&rawpkt_iter, found_interface,
-					      removed_interface);
-
 	uv_signal_init(loop, &sigint_handle);
 	sigint_handle.data = &rawpkt_iter;
+	uv_signal_start(&sigint_handle, finish, SIGINT);
 
 	uv_signal_init(loop, &sigterm_handle);
 	sigterm_handle.data = &rawpkt_iter;
-
 	uv_signal_start(&sigint_handle, finish, SIGTERM);
-	uv_signal_start(&sigint_handle, finish, SIGINT);
+
+	uv_rawpkt_network_port_iterator_init(loop, &rawpkt_iter);
+	uv_rawpkt_network_port_iterator_start(&rawpkt_iter, found_interface,
+					      removed_interface);
+
+	entity_state_init(&the_entity, loop);
+	entity_state_start(&the_entity);
 
 	uv_run(loop, UV_RUN_DEFAULT);
+
+	entity_state_stop(&the_entity);
 
 	return 0;
 }
