@@ -387,7 +387,7 @@ int main(int argc, char **argv)
 	uv_signal_init(loop, &sigterm_handle);
 	sigterm_handle.data = &rawpkt_iter;
 
-	uv_signal_start(&sigint_handle, finish, SIGTERM);
+	uv_signal_start(&sigterm_handle, finish, SIGTERM);
 	uv_signal_start(&sigint_handle, finish, SIGINT);
 
 	uv_run(loop, UV_RUN_DEFAULT);
